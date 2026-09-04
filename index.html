@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My 24h</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b0914;
+      --card-bg: rgba(22, 18, 36, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --fab: #db2777;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+    
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+      background-image: radial-gradient(circle at 50% 100%, rgba(219, 39, 119, 0.25), transparent 60%);
+      background-attachment: fixed;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 414px;
+      padding: 24px 20px 100px 20px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Screen Views */
+    .view { display: none; flex-direction: column; gap: 20px; }
+    .view.active { display: flex; }
+
+    /* Header & Date Controls */
+    .header { text-align: center; margin-bottom: 8px; }
+    .header h1 { font-family: 'Playfair Display', serif; font-size: 2.2rem; font-weight: 600; letter-spacing: -0.5px; }
+    
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .date-nav button {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .date-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .data-header { text-align: left; }
+    .data-header h1 { font-size: 1.8rem; font-weight: 700; }
+
+    /* Live Ticker Box */
+    .ticker-box {
+      text-align: center;
+      padding: 12px 0;
+    }
+    .timer-display {
+      font-size: 3.2rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ticker-status {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(16px);
+      border-radius: 20px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+
+    .card-left { display: flex; align-items: center; gap: 14px; }
+    .icon-box {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .task-title { font-size: 0.95rem; font-weight: 600; }
+    .task-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+
+    .card-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* Action Buttons */
+    .btn-action {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: transform 0.15s ease, background-color 0.2s ease;
+    }
+    .btn-action:active { transform: scale(0.9); }
+    
+    .btn-play { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; }
+    .btn-stop { background: rgba(244, 63, 94, 0.2); color: #f43f5e; }
+    .btn-icon-only { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+    .btn-icon-only:hover { background: rgba(255, 255, 255, 0.12); color: var(--text); }
+
+    .active-running-card {
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      box-shadow: 0 0 20px rgba(244, 63, 94, 0.15);
+    }
+
+    /* Section Labels */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      margin: 12px 0 4px 4px;
+    }
+
+    /* Data View Styling */
+    .chart-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 24px;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .chart-center-text {
+      position: absolute;
+      text-align: center;
+      pointer-events: none;
+    }
+    .chart-center-text .hours { font-size: 2.2rem; font-weight: 800; line-height: 1; }
+    .chart-center-text .label { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; margin-top: 4px; }
+
+    /* Progress Rows */
+    .progress-list { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+    .progress-row { display: flex; flex-direction: column; gap: 8px; }
+    .progress-meta { display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; }
+    .progress-bar-bg { width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; border-radius: 4px; }
+
+    .affirmation-box {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: #2dd4bf;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    /* FAB */
+    .fab {
+      position: fixed;
+      bottom: 90px;
+      right: 24px;
+      width: 52px;
+      height: 52px;
+      border-radius: 18px;
+      background: var(--fab);
+      color: white;
+      border: none;
+      font-size: 1.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 25px rgba(219, 39, 119, 0.4);
+      cursor: pointer;
+    }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav-container {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+    }
+    .bottom-nav {
+      background: rgba(18, 14, 28, 0.85);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(20px);
+      border-radius: 30px;
+      padding: 6px;
+      display: flex;
+      gap: 6px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .nav-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 24px;
+      border-radius: 22px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .nav-btn.active {
+      background: rgba(219, 39, 119, 0.2);
+      color: #f472b6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- TIMER TAB -->
+    <div id="timerView" class="view active">
+      <div class="header">
+        <h1>My 24h</h1>
+        <div class="date-nav">
+          <button onclick="changeDate(-1)">‹</button>
+          <span id="timerDateLabel">Friday, Sep 4, 2026</span>
+          <button id="btnNextDate" onclick="changeDate(1)">›</button>
+        </div>
+      </div>
+
+      <div class="ticker-box">
+        <div class="timer-display" id="liveTicker">00:00:00</div>
+        <div class="ticker-status" id="tickerStatus">IDLE</div>
+      </div>
+
+      <div id="activeTaskCardContainer"></div>
+
+      <div class="section-header">
+        <span>ACTIVITIES</span>
+        <span id="categoryCount">0 categories</span>
+      </div>
+
+      <div class="progress-list" id="activitiesList"></div>
+    </div>
+
+    <!-- DATA TAB -->
+    <div id="dataView" class="view">
+      <div class="data-header header">
+        <h1 id="dataDayName">Friday</h1>
+        <div class="date-nav" style="justify-content: flex-start; margin-top: 2px;">
+          <button onclick="changeDate(-1)">‹</button>
+          <span id="dataDateLabel">September 4, 2026</span>
+          <button id="btnNextDateData" onclick="changeDate(1)">›</button>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <canvas id="donutChart" width="220" height="220"></canvas>
+        <div class="chart-center-text">
+          <div class="hours" id="trackedHoursText">0s</div>
+          <div class="label">TRACKED</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <span>ACTIVITIES</span>
+        <span>Breakdown</span>
+      </div>
+
+      <div class="progress-list" id="dataBreakdownList"></div>
+
+      <div class="affirmation-box">
+        <span>📈</span> <span id="affirmationText">Awesome work! Logged 0s today.</span>
+      </div>
+    </div>
+
+  </div>
+
+  <button class="fab" onclick="addNewCategory()">+</button>
+
+  <!-- Bottom Navigation -->
+  <div class="bottom-nav-container">
+    <div class="bottom-nav">
+      <button class="nav-btn active" id="btnTimerTab" onclick="switchTab('timer')">
+        <span>⏱</span> Timer
+      </button>
+      <button class="nav-btn" id="btnDataTab" onclick="switchTab('data')">
+        <span>📊</span> Data
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const INITIAL_TASKS = [
+      { id: 'sleep', name: 'Sleep', icon: '🌙', color: '#818cf8', secondsLogged: 0 },
+      { id: 'work', name: 'Work', icon: '💼', color: '#f43f5e', secondsLogged: 0 },
+      { id: 'chores', name: 'Chores', icon: '🏠', color: '#2dd4bf', secondsLogged: 0 }
+    ];
+
+    let currentDateObj = new Date();
+    
+    function formatDateKey(d) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function isToday(d) {
+      const today = new Date();
+      return d.toDateString() === today.toDateString();
+    }
+
+    let historyData = JSON.parse(localStorage.getItem('my24h_history') || '{}');
+    let activeTaskId = localStorage.getItem('my24h_activeTaskId') || null;
+    let startTime = localStorage.getItem('my24h_startTime') ? parseInt(localStorage.getItem('my24h_startTime')) : null;
+
+    function getTasksForDate(dateKey) {
+      if (!historyData[dateKey]) {
+        historyData[dateKey] = JSON.parse(JSON.stringify(INITIAL_TASKS));
+        saveState();
+      }
+      return historyData[dateKey];
+    }
+
+    function saveState() {
+      localStorage.setItem('my24h_history', JSON.stringify(historyData));
+      localStorage.setItem('my24h_activeTaskId', activeTaskId || '');
+      localStorage.setItem('my24h_startTime', startTime || '');
+    }
+
+    function changeDate(offset) {
+      currentDateObj.setDate(currentDateObj.getDate() + offset);
+      updateUI();
+      if (document.getElementById('dataView').classList.contains('active')) {
+        renderChart();
+      }
+    }
+
+    function switchTab(tab) {
+      document.getElementById('timerView').classList.toggle('active', tab === 'timer');
+      document.getElementById('dataView').classList.toggle('active', tab === 'data');
+      document.getElementById('btnTimerTab').classList.toggle('active', tab === 'timer');
+      document.getElementById('btnDataTab').classList.toggle('active', tab === 'data');
+      
+      if (tab === 'data') renderChart();
+    }
+
+    function toggleTask(id) {
+      if (!isToday(currentDateObj)) {
+        alert("Timers can only run on Today's date! Switching to today.");
+        currentDateObj = new Date();
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const todayKey = formatDateKey(currentDateObj);
+      let todayTasks = getTasksForDate(todayKey);
+
+      if (activeTaskId) {
+        const elapsed = now - startTime;
+        const currentTask = todayTasks.find(t => t.id === activeTaskId);
+        if (currentTask) currentTask.secondsLogged += elapsed;
+        
+        if (activeTaskId === id) {
+          activeTaskId = null;
+          startTime = null;
+        } else {
+          activeTaskId = id;
+          startTime = now;
+        }
+      } else {
+        activeTaskId = id;
+        startTime = now;
+      }
+
+      saveState();
+      updateUI();
+    }
+
+    function editTask(id) {
+      const selectedKey = formatDateKey(currentDateObj);
+      const tasks = getTasksForDate(selectedKey);
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      const newName = prompt("Edit task name:", task.name);
+      if (newName !== null && newName.trim() !== '') {
+        task.name = newName.trim();
+      }
+
+      const newIcon = prompt("Edit emoji icon:", task.icon);
+      if (newIcon !== null && newIcon.trim() !== '') {
+        task.icon = newIcon.trim();
+      }
+
+      saveState();
+      updateUI();
+    }
+
+    function deleteTask(id) {
+      if (activeTaskId === id) {
+        alert("Please stop tracking this task before deleting it.");
+        return;
+      }
+
+      const selectedKey = formatDateKey(currentDateObj);
+      const tasks = getTasksForDate(selectedKey);
+      const taskIndex = tasks.findIndex(t => t.id === id);
+
+      if (taskIndex !== -1 && confirm(`Delete "${tasks[taskIndex].name}"?`)) {
+        tasks.splice(taskIndex, 1);
+        saveState();
+        updateUI();
+      }
+    }
+
+    function formatDuration(totalSeconds) {
+      if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;
+      if (totalSeconds < 3600) return `${Math.floor(totalSeconds / 60)}m`;
+      return `${(totalSeconds / 3600).toFixed(1)}h`;
+    }
+
+    function getFormattedTime(totalSec) {
+      const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+      const s = String(totalSec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    function updateUI() {
+      const selectedKey = formatDateKey(currentDateObj);
+      const tasks = getTasksForDate(selectedKey);
+      const viewingToday = isToday(currentDateObj);
+
+      document.getElementById('categoryCount').innerText = `${tasks.length} categories logged`;
+
+      // 1. Header Date Navigation Labels
+      const options = { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' };
+      const dateString = currentDateObj.toLocaleDateString('en-US', options);
+      document.getElementById('timerDateLabel').innerText = viewingToday ? `Today, ${currentDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : dateString;
+      document.getElementById('dataDateLabel').innerText = dateString;
+      document.getElementById('dataDayName').innerText = currentDateObj.toLocaleDateString('en-US', { weekday: 'long' });
+
+      document.getElementById('btnNextDate').disabled = viewingToday;
+      document.getElementById('btnNextDateData').disabled = viewingToday;
+
+      // 2. Ticker Logic
+      if (viewingToday && activeTaskId && startTime) {
+        const now = Math.floor(Date.now() / 1000);
+        const elapsed = now - startTime;
+        document.getElementById('liveTicker').innerText = getFormattedTime(elapsed);
+        const activeTask = tasks.find(t => t.id === activeTaskId);
+        document.getElementById('tickerStatus').innerText = `${activeTask ? activeTask.name.toUpperCase() : ''} ONGOING...`;
+      } else {
+        document.getElementById('liveTicker').innerText = "00:00:00";
+        document.getElementById('tickerStatus').innerText = viewingToday ? "IDLE" : "PAST DAY LOG";
+      }
+
+      // 3. Active Running Card
+      const activeCardBox = document.getElementById('activeTaskCardContainer');
+      activeCardBox.innerHTML = '';
+      if (viewingToday && activeTaskId) {
+        const activeTask = tasks.find(t => t.id === activeTaskId);
+        if (activeTask) {
+          activeCardBox.innerHTML = `
+            <div class="card active-running-card">
+              <div class="card-left">
+                <div class="icon-box" style="background: rgba(244, 63, 94, 0.2);">${activeTask.icon}</div>
+                <div>
+                  <div class="task-title">${activeTask.name}</div>
+                  <div class="task-meta" style="color: #f43f5e;">Running now</div>
+                </div>
+              </div>
+              <button class="btn-action btn-stop" onclick="toggleTask('${activeTask.id}')">⏹</button>
+            </div>
+          `;
+        }
+      }
+
+      // 4. Activities List
+      const listEl = document.getElementById('activitiesList');
+      listEl.innerHTML = '';
+      tasks.forEach(task => {
+        const isActive = viewingToday && (task.id === activeTaskId);
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="card-left">
+            <div class="icon-box" style="background: ${task.color}20;">${task.icon}</div>
+            <div>
+              <div class="task-title">${task.name}</div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn-action btn-icon-only" onclick="editTask('${task.id}')" title="Edit">✏️</button>
+            <button class="btn-action btn-icon-only" onclick="deleteTask('${task.id}')" title="Delete">🗑</button>
+            <button class="btn-action ${isActive ? 'btn-stop' : 'btn-play'}" onclick="toggleTask('${task.id}')">
+              ${isActive ? '⏹' : '▶'}
+            </button>
+          </div>
+        `;
+        listEl.appendChild(card);
+      });
+
+      renderDataBreakdown();
+    }
+
+    function renderDataBreakdown() {
+      const selectedKey = formatDateKey(currentDateObj);
+      const tasks = getTasksForDate(selectedKey);
+      const viewingToday = isToday(currentDateObj);
+
+      const breakdownEl = document.getElementById('dataBreakdownList');
+      breakdownEl.innerHTML = '';
+      
+      let totalTrackedSec = tasks.reduce((acc, t) => acc + t.secondsLogged, 0);
+      if (viewingToday && activeTaskId && startTime) {
+        totalTrackedSec += (Math.floor(Date.now() / 1000) - startTime);
+      }
+
+      const untrackedSec = Math.max(0, (24 * 3600) - totalTrackedSec);
+
+      tasks.forEach(task => {
+        let currentSec = task.secondsLogged;
+        if (viewingToday && task.id === activeTaskId && startTime) {
+          currentSec += (Math.floor(Date.now() / 1000) - startTime);
+        }
+        const pct = ((currentSec / (24 * 3600)) * 100).toFixed(1);
+        const timeDisplay = formatDuration(currentSec);
+
+        breakdownEl.appendChild(createProgressRow(task.name, task.icon, timeDisplay, pct, task.color));
+      });
+
+      const untrackedPct = ((untrackedSec / (24 * 3600)) * 100).toFixed(1);
+      const untrackedDisplay = formatDuration(untrackedSec);
+      breakdownEl.appendChild(createProgressRow('Untracked Time', '⏱', untrackedDisplay, untrackedPct, '#334155'));
+
+      const totalDisplay = formatDuration(totalTrackedSec);
+      document.getElementById('trackedHoursText').innerText = totalDisplay;
+      document.getElementById('affirmationText').innerText = `Awesome work! Logged ${totalDisplay} on this day.`;
+    }
+
+    function createProgressRow(title, icon, hoursText, pct, color) {
+      const row = document.createElement('div');
+      row.className = 'progress-row';
+      row.innerHTML = `
+        <div class="progress-meta">
+          <span>${icon} ${title} <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 6px;">${pct}%</span></span>
+          <span>${hoursText}</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width: ${pct}%; background: ${color};"></div>
+        </div>
+      `;
+      return row;
+    }
+
+    let chartInstance = null;
+
+    function renderChart() {
+      const ctx = document.getElementById('donutChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      const selectedKey = formatDateKey(currentDateObj);
+      const tasks = getTasksForDate(selectedKey);
+      const viewingToday = isToday(currentDateObj);
+
+      let totalTrackedSec = tasks.reduce((acc, t) => acc + t.secondsLogged, 0);
+      if (viewingToday && activeTaskId && startTime) totalTrackedSec += (Math.floor(Date.now() / 1000) - startTime);
+      
+      const untrackedSec = Math.max(0, (24 * 3600) - totalTrackedSec);
+
+      const labels = [...tasks.map(t => t.name), 'Untracked'];
+      const data = [...tasks.map(t => {
+        let sec = t.secondsLogged;
+        if (viewingToday && t.id === activeTaskId && startTime) sec += (Math.floor(Date.now() / 1000) - startTime);
+        return (sec / 3600).toFixed(2);
+      }), (untrackedSec / 3600).toFixed(2)];
+
+      const colors = [...tasks.map(t => t.color), '#334155'];
+
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+        options: {
+          cutout: '80%',
+          plugins: { legend: { display: false } },
+          responsive: false
+        }
+      });
+    }
+
+    function addNewCategory() {
+      const name = prompt("Enter activity name:");
+      if (!name || name.trim() === '') return;
+
+      const icon = prompt("Enter emoji icon (or leave blank for default):", "📌") || "📌";
+
+      const id = name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+      const colors = ['#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#a855f7', '#06b6d4'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      
+      const selectedKey = formatDateKey(currentDateObj);
+      const tasks = getTasksForDate(selectedKey);
+      tasks.push({ id, name: name.trim(), icon: icon.trim(), color: randomColor, secondsLogged: 0 });
+      saveState();
+      updateUI();
+    }
+
+    // Ticker Loop
+    setInterval(() => {
+      if (activeTaskId && isToday(currentDateObj)) updateUI();
+    }, 1000);
+
+    // Initial Load
+    updateUI();
+  </script>
+</body>
+</html>
