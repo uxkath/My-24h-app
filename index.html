@@ -74,6 +74,32 @@
     .data-header { text-align: left; }
     .data-header h1 { font-size: 1.8rem; font-weight: 700; }
 
+    /* Mode Toggle Switch for Data View */
+    .mode-toggle-container {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 4px;
+      margin-top: 4px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .mode-btn.active {
+      background: rgba(219, 39, 119, 0.25);
+      color: #f472b6;
+    }
+
     /* Live Ticker Box */
     .ticker-box {
       text-align: center;
@@ -108,13 +134,15 @@
 
     .card-left { display: flex; align-items: center; gap: 14px; }
     .icon-box {
-      width: 38px;
-      height: 38px;
+      width: 42px;
+      height: 42px;
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.1rem;
+      font-size: 1.2rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .task-title { font-size: 0.95rem; font-weight: 600; }
@@ -183,7 +211,11 @@
     .progress-row { display: flex; flex-direction: column; gap: 8px; }
     .progress-meta { display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; }
     .progress-bar-bg { width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
-    .progress-bar-fill { height: 100%; border-radius: 4px; }
+    .progress-bar-fill { 
+      height: 100%; 
+      border-radius: 4px; 
+      transition: width 0.3s ease;
+    }
 
     .affirmation-box {
       margin-top: 10px;
@@ -200,18 +232,20 @@
       position: fixed;
       bottom: 90px;
       right: 24px;
-      width: 52px;
-      height: 52px;
-      border-radius: 18px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
       background: var(--fab);
       color: white;
       border: none;
       font-size: 1.8rem;
+      line-height: 1;
       display: flex;
       align-items: center;
       justify-content: center;
       box-shadow: 0 10px 25px rgba(219, 39, 119, 0.4);
       cursor: pointer;
+      padding-bottom: 8px;
     }
 
     /* Bottom Navigation Bar */
@@ -294,17 +328,23 @@
         </div>
       </div>
 
+      <!-- Mode Selector -->
+      <div class="mode-toggle-container">
+        <button class="mode-btn active" id="btnMode24h" onclick="setDataMode('24h')">24h Day View</button>
+        <button class="mode-btn" id="btnModeLogged" onclick="setDataMode('logged')">Logged Only</button>
+      </div>
+
       <div class="chart-container">
         <canvas id="donutChart" width="220" height="220"></canvas>
         <div class="chart-center-text">
           <div class="hours" id="trackedHoursText">0s</div>
-          <div class="label">TRACKED</div>
+          <div class="label" id="trackedHoursLabel">TRACKED</div>
         </div>
       </div>
 
       <div class="section-header">
         <span>ACTIVITIES</span>
-        <span>Breakdown</span>
+        <span id="breakdownSubhead">Breakdown</span>
       </div>
 
       <div class="progress-list" id="dataBreakdownList"></div>
@@ -338,6 +378,7 @@
     ];
 
     let currentDateObj = new Date();
+    let dataDisplayMode = '24h'; // '24h' or 'logged'
     
     function formatDateKey(d) {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -352,10 +393,38 @@
     let activeTaskId = localStorage.getItem('my24h_activeTaskId') || null;
     let startTime = localStorage.getItem('my24h_startTime') ? parseInt(localStorage.getItem('my24h_startTime')) : null;
 
-    function getTasksForDate(dateKey) {
+            function getTasksForDate(dateKey) {
       if (!historyData[dateKey]) {
-        historyData[dateKey] = JSON.parse(JSON.stringify(INITIAL_TASKS));
+        const sortedKeys = Object.keys(historyData).filter(k => k < dateKey).sort();
+        if (sortedKeys.length > 0) {
+          const lastKey = sortedKeys[sortedKeys.length - 1];
+          historyData[dateKey] = historyData[lastKey].map(task => ({
+            ...task,
+            secondsLogged: 0
+          }));
+        } else {
+          historyData[dateKey] = JSON.parse(JSON.stringify(INITIAL_TASKS));
+        }
         saveState();
+      } else {
+        // Safe Sync: Update existing tasks with recent colors/names from previous day if unchanged
+        const sortedKeys = Object.keys(historyData).filter(k => k < dateKey).sort();
+        if (sortedKeys.length > 0) {
+          const lastKey = sortedKeys[sortedKeys.length - 1];
+          const prevTasks = historyData[lastKey];
+          
+          prevTasks.forEach(prevTask => {
+            const currentTask = historyData[dateKey].find(t => t.id === prevTask.id);
+            if (currentTask) {
+              currentTask.color = prevTask.color;
+              currentTask.name = prevTask.name;
+              currentTask.icon = prevTask.icon;
+            } else {
+              // Bring over any new task added yesterday that isn't in today yet
+              historyData[dateKey].push({ ...prevTask, secondsLogged: 0 });
+            }
+          });
+        }
       }
       return historyData[dateKey];
     }
@@ -374,13 +443,24 @@
       }
     }
 
+    function setDataMode(mode) {
+      dataDisplayMode = mode;
+      document.getElementById('btnMode24h').classList.toggle('active', mode === '24h');
+      document.getElementById('btnModeLogged').classList.toggle('active', mode === 'logged');
+      renderDataBreakdown();
+      renderChart();
+    }
+
     function switchTab(tab) {
       document.getElementById('timerView').classList.toggle('active', tab === 'timer');
       document.getElementById('dataView').classList.toggle('active', tab === 'data');
       document.getElementById('btnTimerTab').classList.toggle('active', tab === 'timer');
       document.getElementById('btnDataTab').classList.toggle('active', tab === 'data');
       
-      if (tab === 'data') renderChart();
+      if (tab === 'data') {
+        renderDataBreakdown();
+        renderChart();
+      }
     }
 
     function toggleTask(id) {
@@ -414,6 +494,18 @@
       updateUI();
     }
 
+    const COLOR_OPTIONS = [
+      { name: 'Rose', value: '#f43f5e' },
+      { name: 'Teal', value: '#2dd4bf' },
+      { name: 'Amber', value: '#f59e0b' },
+      { name: 'Indigo', value: '#818cf8' },
+      { name: 'Sunset Gradient', value: 'linear-gradient(90deg, #ff7e5f, #feb47b)' },
+      { name: 'Neon Purple Gradient', value: 'linear-gradient(90deg, #8a2387, #e94057, #f27121)' },
+      { name: 'Ocean Gradient', value: 'linear-gradient(90deg, #2b5876, #4e4376)' },
+      { name: 'Cyberpunk Gradient', value: 'linear-gradient(90deg, #f72585, #7209b7, #4cc9f0)' },
+      { name: 'Emerald Gradient', value: 'linear-gradient(90deg, #11998e, #38ef7d)' }
+    ];
+
     function editTask(id) {
       const selectedKey = formatDateKey(currentDateObj);
       const tasks = getTasksForDate(selectedKey);
@@ -421,13 +513,17 @@
       if (!task) return;
 
       const newName = prompt("Edit task name:", task.name);
-      if (newName !== null && newName.trim() !== '') {
-        task.name = newName.trim();
-      }
+      if (newName !== null && newName.trim() !== '') task.name = newName.trim();
 
       const newIcon = prompt("Edit emoji icon:", task.icon);
-      if (newIcon !== null && newIcon.trim() !== '') {
-        task.icon = newIcon.trim();
+      if (newIcon !== null && newIcon.trim() !== '') task.icon = newIcon.trim();
+
+      const paletteText = COLOR_OPTIONS.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+      const colorChoice = prompt(`Choose a color theme (enter number):\n${paletteText}`, '1');
+      
+      const choiceIndex = parseInt(colorChoice) - 1;
+      if (!isNaN(choiceIndex) && COLOR_OPTIONS[choiceIndex]) {
+        task.color = COLOR_OPTIONS[choiceIndex].value;
       }
 
       saveState();
@@ -493,37 +589,82 @@
         document.getElementById('tickerStatus').innerText = viewingToday ? "IDLE" : "PAST DAY LOG";
       }
 
-      // 3. Active Running Card
+                  // 3. Active Running Card
       const activeCardBox = document.getElementById('activeTaskCardContainer');
       activeCardBox.innerHTML = '';
+
       if (viewingToday && activeTaskId) {
         const activeTask = tasks.find(t => t.id === activeTaskId);
         if (activeTask) {
+          const color = activeTask.color;
+          const stripeStyle = color.includes('gradient') 
+            ? color.replace('90deg', '180deg') 
+            : color;
+
+          // Extract hex codes from the gradient string
+          let baseColor = color;
+          if (color.includes('gradient')) {
+            const hexes = color.match(/#(?:[0-9a-fA-F]{3}){1,2}/g);
+            if (hexes && hexes.length > 0) {
+              // Pick the middle or dominant color instead of the dark starting tone
+              baseColor = hexes[Math.floor(hexes.length / 2)] || hexes[0];
+            }
+          }
+
           activeCardBox.innerHTML = `
-            <div class="card active-running-card">
-              <div class="card-left">
-                <div class="icon-box" style="background: rgba(244, 63, 94, 0.2);">${activeTask.icon}</div>
+            <div class="card active-running-card" style="position: relative; overflow: hidden; border: 2px solid ${baseColor}60; box-shadow: 0 0 16px ${baseColor}35;">
+              <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: ${stripeStyle};"></div>
+              <div class="card-left" style="padding-left: 6px;">
+                <div class="icon-box">${activeTask.icon}</div>
                 <div>
                   <div class="task-title">${activeTask.name}</div>
-                  <div class="task-meta" style="color: #f43f5e;">Running now</div>
+                  <div style="font-size: 0.8rem; color: ${baseColor}; margin-top: 2px;">Running now</div>
                 </div>
               </div>
               <button class="btn-action btn-stop" onclick="toggleTask('${activeTask.id}')">⏹</button>
             </div>
           `;
         }
+      } else {
+        activeCardBox.innerHTML = '';
       }
 
-      // 4. Activities List
+                  // 4. Activities List
       const listEl = document.getElementById('activitiesList');
       listEl.innerHTML = '';
       tasks.forEach(task => {
         const isActive = viewingToday && (task.id === activeTaskId);
+
         const card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = `
+        card.style.position = 'relative';
+        card.style.overflow = 'hidden';
+
+                // Add a vertical accent stripe on the far left edge
+        const accentStripe = document.createElement('div');
+        accentStripe.style.position = 'absolute';
+        accentStripe.style.left = '0';
+        accentStripe.style.top = '0';
+        accentStripe.style.bottom = '0';
+        accentStripe.style.width = '5px';
+        
+        // Convert left-to-right (90deg) gradients to top-to-bottom (180deg) for vertical stripes
+        accentStripe.style.background = task.color.includes('gradient') 
+          ? task.color.replace('90deg', '180deg') 
+          : task.color;
+
+        card.appendChild(accentStripe);
+
+        const cardContent = document.createElement('div');
+        cardContent.style.display = 'flex';
+        cardContent.style.alignItems = 'center';
+        cardContent.style.justifyContent = 'space-between';
+        cardContent.style.width = '100%';
+        cardContent.style.paddingLeft = '6px';
+
+        cardContent.innerHTML = `
           <div class="card-left">
-            <div class="icon-box" style="background: ${task.color}20;">${task.icon}</div>
+            <div class="icon-box">${task.icon}</div>
             <div>
               <div class="task-title">${task.name}</div>
             </div>
@@ -536,10 +677,15 @@
             </button>
           </div>
         `;
+
+        card.appendChild(cardContent);
         listEl.appendChild(card);
       });
-
-      renderDataBreakdown();
+      
+      if (document.getElementById('dataView').classList.contains('active')) {
+        renderDataBreakdown();
+        renderChart();
+      }
     }
 
     function renderDataBreakdown() {
@@ -555,22 +701,30 @@
         totalTrackedSec += (Math.floor(Date.now() / 1000) - startTime);
       }
 
-      const untrackedSec = Math.max(0, (24 * 3600) - totalTrackedSec);
+      const totalBaseSec = (dataDisplayMode === '24h') ? (24 * 3600) : totalTrackedSec;
 
       tasks.forEach(task => {
         let currentSec = task.secondsLogged;
         if (viewingToday && task.id === activeTaskId && startTime) {
           currentSec += (Math.floor(Date.now() / 1000) - startTime);
         }
-        const pct = ((currentSec / (24 * 3600)) * 100).toFixed(1);
+
+        const pct = totalBaseSec > 0 ? ((currentSec / totalBaseSec) * 100).toFixed(1) : "0.0";
         const timeDisplay = formatDuration(currentSec);
 
         breakdownEl.appendChild(createProgressRow(task.name, task.icon, timeDisplay, pct, task.color));
       });
 
-      const untrackedPct = ((untrackedSec / (24 * 3600)) * 100).toFixed(1);
-      const untrackedDisplay = formatDuration(untrackedSec);
-      breakdownEl.appendChild(createProgressRow('Untracked Time', '⏱', untrackedDisplay, untrackedPct, '#334155'));
+      // Show untracked only in 24h mode
+      if (dataDisplayMode === '24h') {
+        const untrackedSec = Math.max(0, (24 * 3600) - totalTrackedSec);
+        const untrackedPct = ((untrackedSec / (24 * 3600)) * 100).toFixed(1);
+        const untrackedDisplay = formatDuration(untrackedSec);
+        breakdownEl.appendChild(createProgressRow('Untracked Time', '⏱', untrackedDisplay, untrackedPct, '#334155'));
+        document.getElementById('breakdownSubhead').innerText = "Full 24h Day Breakdown";
+      } else {
+        document.getElementById('breakdownSubhead').innerText = "Tracked Effort Breakdown";
+      }
 
       const totalDisplay = formatDuration(totalTrackedSec);
       document.getElementById('trackedHoursText').innerText = totalDisplay;
@@ -580,13 +734,17 @@
     function createProgressRow(title, icon, hoursText, pct, color) {
       const row = document.createElement('div');
       row.className = 'progress-row';
+      const isGradient = color.includes('gradient');
+      const bgStyle = isGradient ? `background: ${color};` : `background: ${color};`;
+      const iconBgStyle = isGradient ? `background: ${color}; opacity: 0.9;` : `background: ${color}20;`;
+
       row.innerHTML = `
         <div class="progress-meta">
           <span>${icon} ${title} <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 6px;">${pct}%</span></span>
           <span>${hoursText}</span>
         </div>
         <div class="progress-bar-bg">
-          <div class="progress-bar-fill" style="width: ${pct}%; background: ${color};"></div>
+          <div class="progress-bar-fill" style="width: ${pct}%; ${bgStyle}"></div>
         </div>
       `;
       return row;
@@ -594,9 +752,14 @@
 
     let chartInstance = null;
 
+        function parseGradientColors(colorStr) {
+      if (!colorStr.includes('gradient')) return [colorStr, colorStr];
+      const matches = colorStr.match(/#(?:[0-9a-fA-F]{3}){1,2}/g);
+      return matches && matches.length >= 2 ? matches : ['#f43f5e', '#f59e0b'];
+    }
+
     function renderChart() {
       const ctx = document.getElementById('donutChart').getContext('2d');
-      if (chartInstance) chartInstance.destroy();
 
       const selectedKey = formatDateKey(currentDateObj);
       const tasks = getTasksForDate(selectedKey);
@@ -604,29 +767,61 @@
 
       let totalTrackedSec = tasks.reduce((acc, t) => acc + t.secondsLogged, 0);
       if (viewingToday && activeTaskId && startTime) totalTrackedSec += (Math.floor(Date.now() / 1000) - startTime);
-      
-      const untrackedSec = Math.max(0, (24 * 3600) - totalTrackedSec);
 
-      const labels = [...tasks.map(t => t.name), 'Untracked'];
-      const data = [...tasks.map(t => {
+      let labels = [];
+      let data = [];
+      let rawColors = [];
+
+      tasks.forEach(t => {
         let sec = t.secondsLogged;
         if (viewingToday && t.id === activeTaskId && startTime) sec += (Math.floor(Date.now() / 1000) - startTime);
-        return (sec / 3600).toFixed(2);
-      }), (untrackedSec / 3600).toFixed(2)];
-
-      const colors = [...tasks.map(t => t.color), '#334155'];
-
-      chartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
-        options: {
-          cutout: '80%',
-          plugins: { legend: { display: false } },
-          responsive: false
-        }
+        
+        labels.push(t.name);
+        data.push((sec / 3600).toFixed(2));
+        rawColors.push(t.color);
       });
-    }
 
+      if (dataDisplayMode === '24h') {
+        const untrackedSec = Math.max(0, (24 * 3600) - totalTrackedSec);
+        labels.push('Untracked');
+        data.push((untrackedSec / 3600).toFixed(2));
+        rawColors.push('#334155');
+      }
+
+      if (dataDisplayMode === 'logged' && totalTrackedSec === 0) {
+        labels = ['No activity logged'];
+        data = [1];
+        rawColors = ['#1e1b2e'];
+      }
+
+      // Generate canvas gradients dynamically
+      const chartColors = rawColors.map(c => {
+        if (!c.includes('gradient')) return c;
+        const gradient = ctx.createLinearGradient(0, 0, 200, 200);
+        const hexes = parseGradientColors(c);
+        gradient.addColorStop(0, hexes[0]);
+        gradient.addColorStop(1, hexes[hexes.length - 1]);
+        return gradient;
+      });
+
+      if (chartInstance) {
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets[0].data = data;
+        chartInstance.data.datasets[0].backgroundColor = chartColors;
+        chartInstance.update('none');
+      } else {
+        chartInstance = new Chart(ctx, {
+          type: 'doughnut',
+          data: { labels, datasets: [{ data, backgroundColor: chartColors, borderWidth: 0 }] },
+          options: {
+            animation: false,
+            cutout: '80%',
+            plugins: { legend: { display: false } },
+            responsive: false
+          }
+        });
+      }
+    }
     function addNewCategory() {
       const name = prompt("Enter activity name:");
       if (!name || name.trim() === '') return;
